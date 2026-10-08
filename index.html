@@ -249,7 +249,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
 .modal-overlay.open{display:flex;}
 .modal{
   background:var(--paper-alt);border:1px solid var(--rule);border-radius:4px;
-  width:420px;max-width:100%;max-height:90vh;overflow-y:auto;
+  width:420px;max-width:100%;max-height:90vh;max-height:90dvh;
+  display:flex;flex-direction:column;overflow:hidden;
   box-shadow:0 12px 40px rgba(32,41,31,0.3);
 }
 .modal-head{
@@ -257,7 +258,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
   display:flex;justify-content:space-between;align-items:center;
 }
 .modal-head h3{font-family:var(--font-display);font-size:20px;margin:0;font-weight:600;}
-.modal-body{padding:20px 22px;}
+.modal-head, .modal-foot{flex:none;}
+.modal-body{padding:20px 22px;overflow-y:auto;flex:1 1 auto;min-height:0;}
 .field{margin-bottom:14px;}
 .field label{
   display:block;font-size:11px;text-transform:uppercase;letter-spacing:.06em;
@@ -317,6 +319,45 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
 .sync-facts{font-family:var(--font-mono);font-size:12px;color:var(--ink-soft);line-height:1.8;margin:0 0 6px;}
 .sync-facts b{color:var(--ink);font-weight:600;}
 .modal-foot .btn[disabled]{opacity:.5;cursor:default;transform:none;}
+
+/* Checkbox rows: the generic ".field input" rule stretched the checkbox to full width and
+   pushed its label out of view. Keep the box small and let the label sit beside it. */
+.check-row input[type=checkbox]{width:16px;height:16px;padding:0;margin:0;flex:none;accent-color:var(--green);}
+.field .check-row label{
+  display:block;margin:0;text-transform:none;letter-spacing:0;
+  font-weight:400;font-size:inherit;color:inherit;cursor:pointer;
+}
+
+/* Clickable transactions */
+.txn-row.clickable{cursor:pointer;margin:0 -8px;padding-left:8px;padding-right:8px;transition:background .12s ease;}
+.txn-row.clickable:hover{background:rgba(168,127,63,0.10);}
+.txn-hint{font-size:11.5px;color:var(--ink-soft);margin:0 0 4px;}
+.tick.clickable{cursor:pointer;}
+.tick.clickable:hover .desc{text-decoration:underline;}
+
+/* Small / vertical phone screens: tighter modals and drawer so everything fits */
+@media (max-width:480px), (max-height:620px){
+  .modal-overlay{padding:8px;}
+  .modal-head{padding:10px 14px;}
+  .modal-head h3{font-size:16px;}
+  .modal-body{padding:12px 14px;}
+  .modal-foot{padding:10px 14px 12px;gap:8px;}
+  .modal-foot .btn{padding:7px 12px;font-size:12px;}
+  .field{margin-bottom:9px;}
+  .field label{font-size:9.5px;margin-bottom:4px;}
+  .field input, .field select{padding:7px 8px;font-size:13px;}
+  .row2{gap:8px;}
+  .toggle-btn{padding:7px;font-size:11.5px;}
+  .check-row{font-size:11.5px;margin-bottom:6px;}
+  .hint{font-size:11px;margin-bottom:9px;}
+  .drawer-head{padding:14px 16px 10px;}
+  .drawer-head h3{font-size:18px;}
+  .drawer-body{padding:12px 16px;}
+  .drawer-bal{font-size:12px;padding:8px 10px;margin-bottom:10px;}
+  .txn-desc{font-size:12.5px;}
+  .txn-amt{font-size:13px;}
+  .rec-info .desc{font-size:12.5px;}
+}
 </style>
 </head>
 <body>
@@ -399,10 +440,11 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
 <div class="modal-overlay" id="addModalOverlay">
   <div class="modal">
     <div class="modal-head">
-      <h3>Add transaction</h3>
+      <h3 id="addModalTitle">Add transaction</h3>
       <button class="drawer-close" id="addModalClose">×</button>
     </div>
     <div class="modal-body">
+      <p class="hint" id="editSeriesNote" style="display:none;">This is a recurring transaction. Changes apply to every occurrence.</p>
       <div class="field">
         <label>Direction</label>
         <div class="toggle-group">
@@ -416,7 +458,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
           <input type="number" id="amountInput" min="0" step="0.01" placeholder="0.00">
         </div>
         <div class="field">
-          <label for="dateInput">Date</label>
+          <label for="dateInput" id="dateLabel">Date</label>
           <input type="date" id="dateInput">
         </div>
       </div>
@@ -438,7 +480,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
       <div class="field" id="endDateWrap" style="display:none;">
         <div class="check-row">
           <input type="checkbox" id="noEndCheck" checked>
-          <label for="noEndCheck" style="margin:0;text-transform:none;letter-spacing:0;font-weight:400;">No end date</label>
+          <label for="noEndCheck">No end date</label>
         </div>
         <div id="endDateField" style="display:none;">
           <label for="endDateInput">Ends on</label>
@@ -774,14 +816,14 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
 
     state.adhoc.forEach(function(t){
       if(cmpISO(t.date, gridStartISO) >= 0 && cmpISO(t.date, gridEndISO) <= 0){
-        dailyData[t.date].txns.push({type:t.type, amount:t.amount, description:t.description, recurring:false});
+        dailyData[t.date].txns.push({id:t.id, type:t.type, amount:t.amount, description:t.description, recurring:false});
         dailyData[t.date].net += (t.type === "in" ? 1 : -1) * t.amount;
       }
     });
     state.scheduled.forEach(function(rule){
       var occ = getOccurrences(rule, gridStartISO, gridEndISO);
       occ.forEach(function(dateISO){
-        dailyData[dateISO].txns.push({type:rule.type, amount:rule.amount, description:rule.description, recurring:true});
+        dailyData[dateISO].txns.push({id:rule.id, type:rule.type, amount:rule.amount, description:rule.description, recurring:true});
         dailyData[dateISO].net += (rule.type === "in" ? 1 : -1) * rule.amount;
       });
     });
@@ -838,6 +880,12 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
         tick.className = "tick " + t.type;
         var marker = t.type === "in" ? (t.recurring ? "△" : "▲") : (t.recurring ? "▽" : "▼");
         tick.innerHTML = '<span class="marker">'+marker+'</span><span class="desc">'+escapeHtml(t.description||"Transaction")+'</span>';
+        tick.className += " clickable";
+        tick.title = "Edit transaction";
+        tick.addEventListener("click", function(ev){
+          if(ev) ev.stopPropagation();
+          openEditModal(t.recurring ? "scheduled" : "adhoc", t.id);
+        });
         tickList.appendChild(tick);
       });
       if(txns.length > maxShow){
@@ -911,9 +959,26 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
       empty.textContent = "No transactions on this day.";
       container.appendChild(empty);
     } else {
+      var editHint = document.createElement("div");
+      editHint.className = "txn-hint";
+      editHint.textContent = "Tap a transaction to edit it.";
+      container.appendChild(editHint);
       txns.forEach(function(t){
         var row = document.createElement("div");
-        row.className = "txn-row";
+        row.className = "txn-row clickable";
+        row.setAttribute("tabindex", "0");
+        row.setAttribute("role", "button");
+        row.title = "Edit transaction";
+        row.addEventListener("click", function(){
+          openEditModal(t.recurring ? "scheduled" : "adhoc", t.id);
+        });
+        row.addEventListener("keydown", function(ev){
+          if(ev.target !== row) return;
+          if(ev.key === "Enter" || ev.key === " "){
+            ev.preventDefault();
+            openEditModal(t.recurring ? "scheduled" : "adhoc", t.id);
+          }
+        });
         var left = document.createElement("div");
         left.className = "txn-left";
         var desc = document.createElement("div");
@@ -938,7 +1003,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
         del.className = "txn-del";
         del.textContent = "×";
         del.title = t.recurring ? "Delete this recurring series" : "Delete transaction";
-        del.addEventListener("click", function(){
+        del.addEventListener("click", function(ev){
+          if(ev) ev.stopPropagation();
           if(t.recurring){
             if(confirm("Delete this whole recurring series? This removes all past and future occurrences.")){
               state.scheduled = state.scheduled.filter(function(r){ return r.id !== t.id; });
@@ -959,56 +1025,115 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
   }
 
   /* ---------- add transaction modal ---------- */
+  var editing = null; // {kind, id} while the modal is editing an existing transaction
+
+  function syncRepeatUI(){
+    var rep = document.getElementById("repeatSelect").value;
+    document.getElementById("endDateWrap").style.display = rep === "none" ? "none" : "block";
+    document.getElementById("dateLabel").textContent = rep === "none" ? "Date" : "Starts";
+    document.getElementById("endDateField").style.display =
+      (rep !== "none" && !document.getElementById("noEndCheck").checked) ? "block" : "none";
+  }
+
+  function setAddModalMode(isEdit, isSeries){
+    document.getElementById("addModalTitle").textContent = isEdit ? "Edit transaction" : "Add transaction";
+    document.getElementById("addSaveBtn").textContent = isEdit ? "Save changes" : "Add transaction";
+    document.getElementById("editSeriesNote").style.display = (isEdit && isSeries) ? "block" : "none";
+  }
+
+  function setType(t){
+    pendingType = t;
+    document.getElementById("typeInBtn").setAttribute("aria-pressed", t === "in" ? "true" : "false");
+    document.getElementById("typeOutBtn").setAttribute("aria-pressed", t === "out" ? "true" : "false");
+  }
+
   function openAddModal(prefillDate){
-    pendingType = "in";
-    document.getElementById("typeInBtn").setAttribute("aria-pressed","true");
-    document.getElementById("typeOutBtn").setAttribute("aria-pressed","false");
+    editing = null;
+    setAddModalMode(false, false);
+    setType("in");
     document.getElementById("amountInput").value = "";
     document.getElementById("descInput").value = "";
     document.getElementById("dateInput").value = prefillDate || selectedDate || todayISO;
     document.getElementById("repeatSelect").value = "none";
-    document.getElementById("endDateWrap").style.display = "none";
     document.getElementById("noEndCheck").checked = true;
-    document.getElementById("endDateField").style.display = "none";
     document.getElementById("endDateInput").value = "";
+    syncRepeatUI();
     document.getElementById("addModalOverlay").classList.add("open");
   }
+
+  function openEditModal(kind, id){
+    var list = kind === "scheduled" ? state.scheduled : state.adhoc;
+    var item = list.filter(function(x){ return x.id === id; })[0];
+    if(!item) return;
+    editing = {kind:kind, id:id};
+    setAddModalMode(true, kind === "scheduled");
+    setType(item.type);
+    document.getElementById("amountInput").value = item.amount;
+    document.getElementById("descInput").value = item.description;
+    if(kind === "scheduled"){
+      document.getElementById("dateInput").value = item.startDate;
+      document.getElementById("repeatSelect").value = item.frequency;
+      document.getElementById("noEndCheck").checked = !item.endDate;
+      document.getElementById("endDateInput").value = item.endDate || "";
+    } else {
+      document.getElementById("dateInput").value = item.date;
+      document.getElementById("repeatSelect").value = "none";
+      document.getElementById("noEndCheck").checked = true;
+      document.getElementById("endDateInput").value = "";
+    }
+    syncRepeatUI();
+    document.getElementById("addModalOverlay").classList.add("open");
+  }
+
   function closeAddModal(){
+    editing = null;
     document.getElementById("addModalOverlay").classList.remove("open");
   }
 
-  document.getElementById("typeInBtn").addEventListener("click", function(){
-    pendingType = "in";
-    this.setAttribute("aria-pressed","true");
-    document.getElementById("typeOutBtn").setAttribute("aria-pressed","false");
-  });
-  document.getElementById("typeOutBtn").addEventListener("click", function(){
-    pendingType = "out";
-    this.setAttribute("aria-pressed","true");
-    document.getElementById("typeInBtn").setAttribute("aria-pressed","false");
-  });
-  document.getElementById("repeatSelect").addEventListener("change", function(){
-    document.getElementById("endDateWrap").style.display = this.value === "none" ? "none" : "block";
-  });
-  document.getElementById("noEndCheck").addEventListener("change", function(){
-    document.getElementById("endDateField").style.display = this.checked ? "none" : "block";
-  });
+  document.getElementById("typeInBtn").addEventListener("click", function(){ setType("in"); });
+  document.getElementById("typeOutBtn").addEventListener("click", function(){ setType("out"); });
+  document.getElementById("repeatSelect").addEventListener("change", syncRepeatUI);
+  document.getElementById("noEndCheck").addEventListener("change", syncRepeatUI);
 
   document.getElementById("addSaveBtn").addEventListener("click", function(){
     var amount = parseFloat(document.getElementById("amountInput").value);
     var date = document.getElementById("dateInput").value;
-    var desc = document.getElementById("descInput").value.trim();
+    var desc = document.getElementById("descInput").value.trim() || "Transaction";
     var repeat = document.getElementById("repeatSelect").value;
+    var endDate = null;
 
     if(!amount || amount <= 0){ alert("Enter an amount greater than zero."); return; }
     if(!date){ alert("Choose a date."); return; }
+    if(repeat !== "none" && !document.getElementById("noEndCheck").checked){
+      endDate = document.getElementById("endDateInput").value || null;
+      if(endDate && endDate < date){ alert("The end date can't be before the start date."); return; }
+    }
 
-    if(repeat === "none"){
-      state.adhoc.push({id:uid(), type:pendingType, amount:amount, description:desc || "Transaction", date:date});
+    var now = Date.now();
+    function newItem(){
+      if(repeat === "none"){
+        state.adhoc.push({id:uid(), type:pendingType, amount:amount, description:desc, date:date, updatedAt:now});
+      } else {
+        state.scheduled.push({id:uid(), type:pendingType, amount:amount, description:desc, startDate:date,
+          frequency:repeat, endDate:endDate, updatedAt:now});
+      }
+    }
+
+    if(!editing){
+      newItem();
+    } else if(editing.kind === "adhoc" && repeat === "none"){
+      var a = state.adhoc.filter(function(x){ return x.id === editing.id; })[0];
+      if(a){ a.type = pendingType; a.amount = amount; a.description = desc; a.date = date; a.updatedAt = now; }
+    } else if(editing.kind === "scheduled" && repeat !== "none"){
+      var r = state.scheduled.filter(function(x){ return x.id === editing.id; })[0];
+      if(r){ r.type = pendingType; r.amount = amount; r.description = desc; r.startDate = date;
+             r.frequency = repeat; r.endDate = endDate; r.updatedAt = now; }
     } else {
-      var noEnd = document.getElementById("noEndCheck").checked;
-      var endDate = noEnd ? null : (document.getElementById("endDateInput").value || null);
-      state.scheduled.push({id:uid(), type:pendingType, amount:amount, description:desc || "Transaction", startDate:date, frequency:repeat, endDate:endDate});
+      // Switched between one-time and recurring: replace the item and tombstone the old one.
+      if(editing.kind === "adhoc") state.adhoc = state.adhoc.filter(function(x){ return x.id !== editing.id; });
+      else state.scheduled = state.scheduled.filter(function(x){ return x.id !== editing.id; });
+      state.deleted.push(editing.id);
+      newItem();
     }
     saveState();
     closeAddModal();
@@ -1111,7 +1236,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
     closeRecModal();
     openAddModal(todayISO);
     document.getElementById("repeatSelect").value = "monthly";
-    document.getElementById("endDateWrap").style.display = "block";
+    syncRepeatUI();
   });
 
   /* ---------- drawer / overlay close ---------- */
@@ -1145,6 +1270,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
   var DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
   var FREQS = {weekly:1, biweekly:1, monthly:1, quarterly:1, yearly:1};
 
+  function stamp(v){ var n = Number(v); return isFinite(n) ? n : 0; }
+
   // Rebuild a state object from untrusted input, keeping only well-formed fields.
   function sanitizeState(s){
     s = s || {};
@@ -1160,7 +1287,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
       if(!t || typeof t.id !== "string") return;
       var amt = Number(t.amount);
       if((t.type !== "in" && t.type !== "out") || !isFinite(amt) || amt <= 0 || !DATE_RE.test(t.date)) return;
-      out.adhoc.push({id:t.id, type:t.type, amount:amt, description:String(t.description || "").slice(0,200), date:t.date});
+      out.adhoc.push({id:t.id, type:t.type, amount:amt, description:String(t.description || "").slice(0,200), date:t.date, updatedAt:stamp(t.updatedAt)});
     });
     (Array.isArray(s.scheduled) ? s.scheduled : []).forEach(function(t){
       if(!t || typeof t.id !== "string") return;
@@ -1168,7 +1295,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
       if((t.type !== "in" && t.type !== "out") || !isFinite(amt) || amt <= 0) return;
       if(!DATE_RE.test(t.startDate) || !FREQS.hasOwnProperty(t.frequency)) return;
       out.scheduled.push({id:t.id, type:t.type, amount:amt, description:String(t.description || "").slice(0,200),
-        startDate:t.startDate, frequency:t.frequency, endDate: DATE_RE.test(t.endDate) ? t.endDate : null});
+        startDate:t.startDate, frequency:t.frequency, endDate: DATE_RE.test(t.endDate) ? t.endDate : null, updatedAt:stamp(t.updatedAt)});
     });
     (Array.isArray(s.deleted) ? s.deleted : []).forEach(function(id){
       if(typeof id === "string") out.deleted.push(id);
@@ -1190,10 +1317,14 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
     a = sanitizeState(a); b = sanitizeState(b);
     var dead = {};
     a.deleted.concat(b.deleted).forEach(function(id){ dead[id] = true; });
+    // Same item on both devices: the most recently edited copy wins (a tie keeps this device's).
     function union(la, lb){
-      var seen = {}, out = [];
+      var byId = {}, out = [];
       la.concat(lb).forEach(function(x){
-        if(!dead[x.id] && !seen[x.id]){ seen[x.id] = true; out.push(x); }
+        if(dead[x.id]) return;
+        var cur = byId[x.id];
+        if(!cur){ byId[x.id] = x; out.push(x); }
+        else if(x.updatedAt > cur.updatedAt){ out[out.indexOf(cur)] = x; byId[x.id] = x; }
       });
       return out;
     }

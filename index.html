@@ -103,6 +103,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
   font-size:12px;padding:6px 12px;border-radius:3px;cursor:pointer;font-family:var(--font-mono);
 }
 .today-btn:hover{background:var(--paper-alt);}
+.month-nav .today-btn{width:auto;height:auto;border-radius:3px;padding:6px 12px;display:inline-block;}
 
 .summary{
   display:flex;gap:18px;font-family:var(--font-mono);font-size:12.5px;color:var(--ink-soft);
@@ -320,6 +321,53 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
 .sync-facts b{color:var(--ink);font-weight:600;}
 .modal-foot .btn[disabled]{opacity:.5;cursor:default;transform:none;}
 
+/* Agenda: the phone layout, one row per day */
+.agenda{display:none;background:var(--paper);}
+.ag-hint{margin:0;padding:9px 12px 4px;font-size:11px;color:var(--ink-soft);}
+.ag-head{
+  display:flex;justify-content:space-between;padding:4px 12px 6px;
+  font-family:var(--font-mono);font-size:9.5px;text-transform:uppercase;
+  letter-spacing:.09em;color:var(--ink-soft);
+}
+.ag-day{background:var(--paper-alt);padding:7px 12px 6px;margin-top:1px;cursor:pointer;}
+.ag-day.week-start{margin-top:7px;}
+.ag-day.today{box-shadow:inset 3px 0 0 var(--brass);}
+.ag-day.negative{background:linear-gradient(180deg, rgba(140,47,42,0.05), rgba(140,47,42,0.09));}
+.ag-top{display:flex;justify-content:space-between;align-items:baseline;gap:8px;}
+.ag-date{display:flex;align-items:baseline;gap:6px;}
+.ag-dow{font-family:var(--font-mono);font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-soft);}
+.ag-num{font-family:var(--font-mono);font-size:15px;font-weight:600;}
+.ag-day.today .ag-num{color:var(--brass);}
+.ag-today{
+  font-family:var(--font-mono);font-size:9px;text-transform:uppercase;letter-spacing:.08em;
+  color:var(--brass);border:1px solid var(--brass);border-radius:2px;padding:0 4px;
+}
+.ag-bal{font-family:var(--font-mono);font-size:12px;font-weight:600;white-space:nowrap;}
+.ag-day.negative .ag-bal{color:var(--red);}
+.ag-txns{display:flex;flex-direction:column;margin-top:2px;}
+.ag-txn{
+  display:flex;align-items:center;gap:7px;width:100%;min-height:30px;padding:4px 0 4px 8px;
+  background:none;border:none;text-align:left;cursor:pointer;
+  font-family:var(--font-body);font-size:12.5px;color:var(--ink);
+}
+.ag-txn + .ag-txn{border-top:1px dashed var(--rule-soft);}
+.ag-marker{font-size:9px;flex:none;}
+.ag-desc{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.ag-amt{font-family:var(--font-mono);font-size:12px;font-weight:600;flex:none;}
+.ag-txn.in .ag-marker, .ag-txn.in .ag-amt{color:var(--green);}
+.ag-txn.out .ag-marker, .ag-txn.out .ag-amt{color:var(--red);}
+.ag-foot{display:flex;justify-content:space-between;gap:8px;padding:12px;}
+.ag-foot .btn{padding:8px 12px;font-size:12px;}
+@media (max-width:640px){
+  .cal-weekdays, .cal-grid{display:none;}
+  .agenda{display:block;}
+  .wrap{padding:16px 12px 40px;}
+  .brand h1{font-size:28px;}
+  .topbar{padding-bottom:12px;margin-bottom:14px;}
+  .legend{flex-wrap:wrap;gap:4px 14px;font-size:10.5px;}
+  .legend > span{white-space:nowrap;}
+}
+
 /* Checkbox rows: the generic ".field input" rule stretched the checkbox to full width and
    pushed its label out of view. Keep the box small and let the label sit beside it. */
 .check-row input[type=checkbox]{width:16px;height:16px;padding:0;margin:0;flex:none;accent-color:var(--green);}
@@ -405,6 +453,15 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
       <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
     </div>
     <div class="cal-grid" id="calGrid"></div>
+    <div class="agenda" id="agenda">
+      <p class="ag-hint">Tap a day to add or review it. Tap a transaction to edit it.</p>
+      <div class="ag-head"><span>Day</span><span>Balance at end of day</span></div>
+      <div id="agendaDays"></div>
+      <div class="ag-foot">
+        <button type="button" class="btn btn-ghost" id="agPrev">‹ Previous</button>
+        <button type="button" class="btn btn-ghost" id="agNext">Next ›</button>
+      </div>
+    </div>
   </div>
 
   <div class="legend">
@@ -805,7 +862,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
     return dates;
   }
 
-  function renderCalendar(){
+  function renderCalendar(scroll){
     document.getElementById("monthLabel").textContent = fmtMonthLabel(viewYear, viewMonth);
     var gridDates = getGridDates(viewYear, viewMonth);
     var gridStartISO = isoOf(gridDates[0]);
@@ -920,7 +977,84 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
       grid.appendChild(cell);
     });
 
+    renderAgenda(gridDates, dailyData, balances);
     document.getElementById("openingValue").textContent = fmtMoney(state.openingBalance);
+    if(scroll) scrollAgenda();
+  }
+
+  function mk(tag, cls, text){
+    var e = document.createElement(tag);
+    if(cls) e.className = cls;
+    if(text !== undefined) e.textContent = text;
+    return e;
+  }
+
+  // Phone layout: one row per day of the viewed month, with that day's transactions listed inside it.
+  function renderAgenda(gridDates, dailyData, balances){
+    var box = document.getElementById("agendaDays");
+    box.innerHTML = "";
+    gridDates.forEach(function(d){
+      if(d.getMonth() !== viewMonth) return;
+      var iso = isoOf(d);
+      var bal = balances[iso];
+      var row = mk("div", "ag-day" + (iso === todayISO ? " today" : "") + (bal < 0 ? " negative" : "") +
+                          (d.getDay() === 0 && d.getDate() > 1 ? " week-start" : ""));
+      row.setAttribute("data-date", iso);
+      row.setAttribute("tabindex", "0");
+      row.setAttribute("role", "button");
+      row.addEventListener("click", function(){ openDrawer(iso); });
+      row.addEventListener("keydown", function(ev){
+        if(ev.target !== row) return;
+        if(ev.key === "Enter" || ev.key === " "){ ev.preventDefault(); openDrawer(iso); }
+      });
+
+      var top = mk("div", "ag-top");
+      var date = mk("div", "ag-date");
+      date.appendChild(mk("span", "ag-dow", d.toLocaleDateString(undefined, {weekday:"short"})));
+      date.appendChild(mk("span", "ag-num", String(d.getDate())));
+      if(iso === todayISO) date.appendChild(mk("span", "ag-today", "Today"));
+      top.appendChild(date);
+      top.appendChild(mk("span", "ag-bal", fmtMoney(bal)));
+      row.appendChild(top);
+
+      var txns = dailyData[iso].txns;
+      if(txns.length){
+        var list = mk("div", "ag-txns");
+        txns.forEach(function(t){
+          var b = mk("button", "ag-txn " + t.type);
+          b.setAttribute("type", "button");
+          var marker = t.type === "in" ? (t.recurring ? "△" : "▲") : (t.recurring ? "▽" : "▼");
+          b.appendChild(mk("span", "ag-marker", marker));
+          b.appendChild(mk("span", "ag-desc", t.description || "Transaction"));
+          b.appendChild(mk("span", "ag-amt", (t.type === "in" ? "+" : "-") + fmtMoney(t.amount).replace("-", "")));
+          b.addEventListener("click", function(ev){
+            if(ev) ev.stopPropagation();
+            openEditModal(t.recurring ? "scheduled" : "adhoc", t.id);
+          });
+          list.appendChild(b);
+        });
+        row.appendChild(list);
+      }
+      box.appendChild(row);
+    });
+
+    function monthName(delta){
+      return new Date(viewYear, viewMonth + delta, 1).toLocaleDateString(undefined, {month:"long"});
+    }
+    document.getElementById("agPrev").textContent = "‹ " + monthName(-1);
+    document.getElementById("agNext").textContent = monthName(1) + " ›";
+  }
+
+  // On a phone, jump to today when viewing this month, otherwise to the top of the new month.
+  function scrollAgenda(){
+    var ag = document.getElementById("agenda");
+    if(!ag || ag.offsetParent === null) return;   // hidden on wide screens
+    var todayRow = ag.querySelector(".ag-day.today");
+    var y = 0;
+    if(todayRow){
+      y = Math.max(0, todayRow.getBoundingClientRect().top + (window.pageYOffset || 0) - window.innerHeight * 0.25);
+    }
+    window.scrollTo(0, y);
   }
 
   function escapeHtml(s){
@@ -1252,18 +1386,19 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
   });
 
   /* ---------- month nav ---------- */
-  document.getElementById("prevMonth").addEventListener("click", function(){
-    viewMonth--; if(viewMonth<0){ viewMonth=11; viewYear--; }
-    renderCalendar();
-  });
-  document.getElementById("nextMonth").addEventListener("click", function(){
-    viewMonth++; if(viewMonth>11){ viewMonth=0; viewYear++; }
-    renderCalendar();
-  });
+  function goMonth(delta){
+    var d = new Date(viewYear, viewMonth + delta, 1);
+    viewYear = d.getFullYear(); viewMonth = d.getMonth();
+    renderCalendar(true);
+  }
+  document.getElementById("prevMonth").addEventListener("click", function(){ goMonth(-1); });
+  document.getElementById("nextMonth").addEventListener("click", function(){ goMonth(1); });
+  document.getElementById("agPrev").addEventListener("click", function(){ goMonth(-1); });
+  document.getElementById("agNext").addEventListener("click", function(){ goMonth(1); });
   document.getElementById("todayBtn").addEventListener("click", function(){
     var t = new Date();
     viewYear = t.getFullYear(); viewMonth = t.getMonth();
-    renderCalendar();
+    renderCalendar(true);
   });
 
   /* ---------- sync: pure helpers ---------- */
@@ -1721,7 +1856,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
   setStatus(sync.cfg.session ? "locked" : "off");
 
   /* ---------- init ---------- */
-  renderCalendar();
+  renderCalendar(true);
 })();
 </script>
 </body>

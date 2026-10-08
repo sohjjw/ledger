@@ -238,8 +238,12 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
 .empty-note{font-size:13px;color:var(--ink-soft);padding:14px 0;font-style:italic;}
 
 .drawer-add{
-  margin-top:16px;padding-top:16px;border-top:1px dashed var(--rule);
+  flex:none;padding:12px 22px calc(12px + env(safe-area-inset-bottom, 0px));
+  border-top:1px solid var(--rule);background:var(--paper-alt);
 }
+.drawer-body{overscroll-behavior:contain;}
+.drawer-close .back{display:none;}
+html{touch-action:manipulation;}
 .drawer-add .btn{width:100%;}
 
 /* Modal */
@@ -406,6 +410,30 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
   .txn-amt{font-size:13px;}
   .rec-info .desc{font-size:12.5px;}
 }
+
+/* Phones and touch screens: iOS zooms into any field under 16px and stays zoomed, so fields are
+   16px here. Everything else stays small to fit. */
+@media (max-width:640px), (pointer:coarse){
+  input:not([type=checkbox]), select, textarea,
+  .field input, .field select{font-size:16px !important;}
+}
+
+/* Phones: the day's transaction list is a full page, not a side sheet */
+@media (max-width:640px){
+  .drawer{width:100%;max-width:100%;border-left:none;}
+  .drawer-head{align-items:center;gap:8px;padding:12px 14px 10px;}
+  #drawerClose{order:-1;padding:8px 6px;margin-left:-6px;}
+  .drawer-close .x{display:none;}
+  .drawer-close .back{display:inline;font-family:var(--font-body);font-size:14px;font-weight:600;color:var(--ink);}
+  .drawer-head h3{font-size:19px;}
+  .drawer-body{padding:12px 14px;}
+  .txn-row{padding:13px 0;}
+  .txn-desc{font-size:14px;}
+  .txn-amt{font-size:14px;}
+  .drawer-add{padding:10px 14px calc(10px + env(safe-area-inset-bottom, 0px));}
+  .drawer-add .btn{padding:12px;font-size:14px;}
+  html.lock{overflow:hidden;}
+}
 </style>
 </head>
 <body>
@@ -479,7 +507,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
       <h3 id="drawerDate">Date</h3>
       <div class="sub" id="drawerSub"></div>
     </div>
-    <button class="drawer-close" id="drawerClose">×</button>
+    <button class="drawer-close" id="drawerClose" aria-label="Close"><span class="x">×</span><span class="back">‹ Back</span></button>
   </div>
   <div class="drawer-body">
     <div class="drawer-bal" id="drawerBal">
@@ -487,9 +515,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
       <b id="drawerBalVal">$0.00</b>
     </div>
     <div id="drawerTxns"></div>
-    <div class="drawer-add">
-      <button class="btn btn-primary" id="drawerAddBtn">+ Add transaction for this day</button>
-    </div>
+  </div>
+  <div class="drawer-add">
+    <button class="btn btn-primary" id="drawerAddBtn">+ Add transaction for this day</button>
   </div>
 </div>
 
@@ -1069,10 +1097,12 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
     renderDrawer();
     document.getElementById("drawer").classList.add("open");
     document.getElementById("overlay").classList.add("open");
+    document.documentElement.classList.add("lock");
   }
   function closeDrawer(){
     document.getElementById("drawer").classList.remove("open");
     document.getElementById("overlay").classList.remove("open");
+    document.documentElement.classList.remove("lock");
     selectedDate = null;
   }
   function renderDrawer(){

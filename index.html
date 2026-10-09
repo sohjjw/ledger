@@ -124,6 +124,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
 .btn-primary:hover{box-shadow:0 4px 12px var(--shadow);}
 .btn-ghost{background:transparent;border:1px solid var(--rule);color:var(--ink);}
 .btn-ghost:hover{background:var(--paper-alt);}
+.btn-danger{background:transparent;border:1px solid var(--red);color:var(--red);margin-right:auto;}
+.btn-danger:hover{background:rgba(140,47,42,0.08);}
 
 /* Calendar */
 .cal{
@@ -393,8 +395,8 @@ html{touch-action:manipulation;}
   .modal-head{padding:10px 14px;}
   .modal-head h3{font-size:16px;}
   .modal-body{padding:12px 14px;}
-  .modal-foot{padding:10px 14px 12px;gap:8px;}
-  .modal-foot .btn{padding:7px 12px;font-size:12px;}
+  .modal-foot{padding:10px 14px 12px;gap:6px;}
+  .modal-foot .btn{padding:7px 9px;font-size:12px;white-space:nowrap;}
   .field{margin-bottom:9px;}
   .field label{font-size:9.5px;margin-bottom:4px;}
   .field input, .field select{padding:7px 8px;font-size:13px;}
@@ -574,6 +576,7 @@ html{touch-action:manipulation;}
       </div>
     </div>
     <div class="modal-foot">
+      <button class="btn btn-danger" id="addDeleteBtn" style="display:none;">Delete</button>
       <button class="btn btn-ghost" id="addCancelBtn">Cancel</button>
       <button class="btn btn-primary" id="addSaveBtn">Add transaction</button>
     </div>
@@ -1203,6 +1206,9 @@ html{touch-action:manipulation;}
     document.getElementById("addModalTitle").textContent = isEdit ? "Edit transaction" : "Add transaction";
     document.getElementById("addSaveBtn").textContent = isEdit ? "Save changes" : "Add transaction";
     document.getElementById("editSeriesNote").style.display = (isEdit && isSeries) ? "block" : "none";
+    var del = document.getElementById("addDeleteBtn");
+    del.style.display = isEdit ? "" : "none";
+    del.textContent = isSeries ? "Delete series" : "Delete";
   }
 
   function setType(t){
@@ -1308,6 +1314,22 @@ html{touch-action:manipulation;}
   document.getElementById("addBtn").addEventListener("click", function(){ openAddModal(todayISO); });
   document.getElementById("drawerAddBtn").addEventListener("click", function(){ openAddModal(selectedDate); });
   document.getElementById("addCancelBtn").addEventListener("click", closeAddModal);
+
+  document.getElementById("addDeleteBtn").addEventListener("click", function(){
+    if(!editing) return;
+    var target = editing;
+    var msg = target.kind === "scheduled"
+      ? "Delete this whole recurring series? This removes all past and future occurrences."
+      : "Delete this transaction?";
+    if(!confirm(msg)) return;
+    if(target.kind === "scheduled") state.scheduled = state.scheduled.filter(function(x){ return x.id !== target.id; });
+    else state.adhoc = state.adhoc.filter(function(x){ return x.id !== target.id; });
+    state.deleted.push(target.id);
+    saveState();
+    closeAddModal();
+    renderCalendar();
+    if(selectedDate) renderDrawer();
+  });
   document.getElementById("addModalClose").addEventListener("click", closeAddModal);
 
   /* ---------- opening balance modal ---------- */
